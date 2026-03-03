@@ -2,12 +2,13 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tui_input::Input;
 
 use super::NewSessionDialog;
-use crate::tui::components::longest_common_prefix;
 
 pub(super) struct GroupGhostCompletion {
     input_snapshot: String,
     cursor_snapshot: usize,
     pub(super) ghost_text: String,
+    /// The full matched group name to use on accept (preserves original casing).
+    full_value: String,
 }
 
 impl NewSessionDialog {
@@ -61,28 +62,26 @@ impl NewSessionDialog {
             return;
         }
 
+        let lower_value = value.to_lowercase();
         let mut matches: Vec<String> = self
             .existing_groups
             .iter()
-            .filter(|g| g.starts_with(&value))
+            .filter(|g| g.to_lowercase().starts_with(&lower_value))
             .cloned()
             .collect();
 
         if matches.is_empty() {
             return;
         }
-        matches.sort();
+        matches.sort_by_key(|a| a.to_lowercase());
 
-        let ghost_text = if matches.len() == 1 {
-            matches[0][value.len()..].to_string()
-        } else {
-            let common = longest_common_prefix(&matches);
-            if common.len() > value.len() {
-                common[value.len()..].to_string()
-            } else {
-                matches[0][value.len()..].to_string()
-            }
-        };
+        // Use the first match as the canonical group name.
+        // Show the remainder of the original group name as ghost text so
+        // that accepting always produces the exact existing name.
+        // Use char count to slice safely (avoids byte-boundary issues with non-ASCII).
+        let best = &matches[0];
+        let input_char_count = value.chars().count();
+        let ghost_text: String = best.chars().skip(input_char_count).collect();
 
         if ghost_text.is_empty() {
             return;
@@ -92,6 +91,7 @@ impl NewSessionDialog {
             input_snapshot: value,
             cursor_snapshot: cursor_char,
             ghost_text,
+            full_value: best.clone(),
         });
     }
 
@@ -109,9 +109,7 @@ impl NewSessionDialog {
             return false;
         }
 
-        let mut new_value = value;
-        new_value.push_str(&ghost.ghost_text);
-        self.group = Input::new(new_value);
+        self.group = Input::new(ghost.full_value);
         self.recompute_group_ghost();
         true
     }
