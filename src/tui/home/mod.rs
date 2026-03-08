@@ -314,30 +314,26 @@ impl HomeView {
 
         if let Some(updates) = self.status_poller.try_recv_updates() {
             for update in updates {
-                if let Some(inst) = self.instances.iter_mut().find(|i| i.id == update.id) {
-                    if inst.status != Status::Deleting
-                        && inst.status != Status::Stopped
+                let old_status = self.get_instance(&update.id).map(|i| i.status);
+
+                let should_update = old_status.is_some_and(|s| {
+                    s != Status::Deleting
+                        && s != Status::Stopped
                         && update.status != Status::Stopped
-                    {
-                        let old_status = inst.status;
-                        inst.status = update.status;
-                        inst.last_error = update.last_error.clone();
-                        if old_status != update.status {
-                            crate::sound::play_for_transition(
-                                old_status,
-                                update.status,
-                                &self.sound_config,
-                            );
+                });
+
+                if should_update {
+                    let new_status = update.status;
+                    let new_error = update.last_error;
+                    self.mutate_instance(&update.id, |inst| {
+                        inst.status = new_status;
+                        inst.last_error = new_error;
+                    });
+
+                    if let Some(old) = old_status {
+                        if old != new_status {
+                            crate::sound::play_for_transition(old, new_status, &self.sound_config);
                         }
-                    }
-                }
-                if let Some(inst) = self.instance_map.get_mut(&update.id) {
-                    if inst.status != Status::Deleting
-                        && inst.status != Status::Stopped
-                        && update.status != Status::Stopped
-                    {
-                        inst.status = update.status;
-                        inst.last_error = update.last_error;
                     }
                 }
             }
@@ -361,18 +357,11 @@ impl HomeView {
                 }
                 let _ = self.reload();
             } else {
-                if let Some(inst) = self
-                    .instances
-                    .iter_mut()
-                    .find(|i| i.id == result.session_id)
-                {
+                let error = result.error;
+                self.mutate_instance(&result.session_id, |inst| {
                     inst.status = Status::Error;
-                    inst.last_error = result.error.clone();
-                }
-                if let Some(inst) = self.instance_map.get_mut(&result.session_id) {
-                    inst.status = Status::Error;
-                    inst.last_error = result.error;
-                }
+                    inst.last_error = error;
+                });
             }
             return true;
         }
@@ -615,12 +604,7 @@ impl HomeView {
     }
 
     pub fn set_instance_status(&mut self, id: &str, status: crate::session::Status) {
-        if let Some(inst) = self.instance_map.get_mut(id) {
-            inst.status = status;
-        }
-        if let Some(inst) = self.instances.iter_mut().find(|i| i.id == id) {
-            inst.status = status;
-        }
+        self.mutate_instance(id, |inst| inst.status = status);
     }
 
     pub fn save(&self) -> anyhow::Result<()> {
@@ -629,13 +613,35 @@ impl HomeView {
         Ok(())
     }
 
-    pub fn set_instance_error(&mut self, id: &str, error: Option<String>) {
-        if let Some(inst) = self.instance_map.get_mut(id) {
-            inst.last_error = error.clone();
-        }
+    /// Centralized instance mutation: applies `f` once to the `instances` vec
+    /// entry, then clones the result into `instance_map`. This guarantees both
+    /// collections stay in sync even for non-idempotent closures.
+    pub(super) fn mutate_instance(&mut self, id: &str, f: impl FnOnce(&mut Instance)) {
         if let Some(inst) = self.instances.iter_mut().find(|i| i.id == id) {
-            inst.last_error = error;
+            f(inst);
+            self.instance_map.insert(id.to_string(), inst.clone());
         }
+    }
+
+    /// Like `mutate_instance`, but for fallible operations. Clones the entry,
+    /// applies `f` to the clone, and writes back to both collections only on
+    /// success -- neither collection is modified on error.
+    pub(super) fn try_mutate_instance(
+        &mut self,
+        id: &str,
+        f: impl FnOnce(&mut Instance) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
+        if let Some(inst) = self.instances.iter_mut().find(|i| i.id == id) {
+            let mut updated = inst.clone();
+            f(&mut updated)?;
+            *inst = updated.clone();
+            self.instance_map.insert(id.to_string(), updated);
+        }
+        Ok(())
+    }
+
+    pub fn set_instance_error(&mut self, id: &str, error: Option<String>) {
+        self.mutate_instance(id, |inst| inst.last_error = error);
     }
 
     pub fn start_terminal_for_instance_with_size(
@@ -643,12 +649,7 @@ impl HomeView {
         id: &str,
         size: Option<(u16, u16)>,
     ) -> anyhow::Result<()> {
-        if let Some(inst) = self.instances.iter_mut().find(|i| i.id == id) {
-            inst.start_terminal_with_size(size)?;
-        }
-        if let Some(inst) = self.instance_map.get_mut(id) {
-            inst.start_terminal_with_size(size)?;
-        }
+        self.try_mutate_instance(id, |inst| inst.start_terminal_with_size(size))?;
         self.save()?;
         Ok(())
     }
@@ -703,13 +704,6 @@ impl HomeView {
         id: &str,
         size: Option<(u16, u16)>,
     ) -> anyhow::Result<()> {
-        if let Some(inst) = self.instances.iter_mut().find(|i| i.id == id) {
-            inst.start_container_terminal_with_size(size)?;
-        }
-        if let Some(inst) = self.instance_map.get_mut(id) {
-            inst.start_container_terminal_with_size(size)?;
-        }
-        // Don't save terminal info for container terminals - it's ephemeral
-        Ok(())
+        self.try_mutate_instance(id, |inst| inst.start_container_terminal_with_size(size))
     }
 }

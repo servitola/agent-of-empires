@@ -70,14 +70,9 @@ impl HomeView {
         if let Some(id) = &self.selected_session {
             let id = id.clone();
 
-            if let Some(inst) = self.instance_map.get_mut(&id) {
-                inst.status = Status::Deleting;
-            }
-            if let Some(inst) = self.instances.iter_mut().find(|i| i.id == id) {
-                inst.status = Status::Deleting;
-            }
+            self.set_instance_status(&id, Status::Deleting);
 
-            if let Some(inst) = self.instance_map.get(&id) {
+            if let Some(inst) = self.get_instance(&id) {
                 let request = DeletionRequest {
                     session_id: id.clone(),
                     instance: inst.clone(),
@@ -125,18 +120,12 @@ impl HomeView {
                 .collect();
 
             for session_id in sessions_to_delete {
-                // Clear group_path when marking for deletion so these instances
-                // won't cause the group to be recreated during tree rebuilds
-                if let Some(inst) = self.instance_map.get_mut(&session_id) {
+                self.mutate_instance(&session_id, |inst| {
                     inst.status = Status::Deleting;
                     inst.group_path = String::new();
-                }
-                if let Some(inst) = self.instances.iter_mut().find(|i| i.id == session_id) {
-                    inst.status = Status::Deleting;
-                    inst.group_path = String::new();
-                }
+                });
 
-                if let Some(inst) = self.instance_map.get(&session_id) {
+                if let Some(inst) = self.get_instance(&session_id) {
                     let delete_worktree = options.delete_worktrees
                         && inst
                             .worktree_info
@@ -194,8 +183,7 @@ impl HomeView {
 
             // Get current values for comparison
             let (current_title, current_group) = self
-                .instance_map
-                .get(&id)
+                .get_instance(&id)
                 .map(|i| (i.title.clone(), i.group_path.clone()))
                 .unwrap_or_default();
 
@@ -235,7 +223,7 @@ impl HomeView {
                     instance.group_path = effective_group.clone();
 
                     // Handle tmux rename if title changed
-                    if let Some(orig_inst) = self.instance_map.get(&id) {
+                    if let Some(orig_inst) = self.get_instance(&id) {
                         if orig_inst.title != effective_title {
                             let tmux_session = orig_inst.tmux_session()?;
                             if tmux_session.exists() {
@@ -276,14 +264,17 @@ impl HomeView {
             }
 
             // No profile change - update in place
-            if let Some(inst) = self.instances.iter_mut().find(|i| i.id == id) {
+            // Read old title before mutation so we can detect renames
+            let old_title = self.get_instance(&id).map(|i| i.title.clone());
+
+            self.mutate_instance(&id, |inst| {
                 inst.title = effective_title.clone();
                 inst.group_path = effective_group.clone();
-            }
+            });
 
             // Handle tmux rename if title changed
-            if let Some(inst) = self.instance_map.get(&id) {
-                if inst.title != effective_title {
+            if old_title.is_some_and(|t| t != effective_title) {
+                if let Some(inst) = self.get_instance(&id) {
                     let tmux_session = inst.tmux_session()?;
                     if tmux_session.exists() {
                         let new_tmux_name =
