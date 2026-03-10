@@ -1571,3 +1571,106 @@ fn test_o_key_clamps_cursor_when_list_shrinks() {
     let valid_max = env.view.flat_items.len().saturating_sub(1);
     assert!(env.view.cursor <= valid_max);
 }
+
+#[test]
+#[serial]
+fn test_all_profiles_view_loads_from_multiple_profiles() {
+    let temp = TempDir::new().unwrap();
+    setup_test_home(&temp);
+
+    let storage_a = Storage::new("alpha").unwrap();
+    storage_a
+        .save(&[Instance::new("Alpha Session", "/tmp/a")])
+        .unwrap();
+
+    let storage_b = Storage::new("beta").unwrap();
+    storage_b
+        .save(&[Instance::new("Beta Session", "/tmp/b")])
+        .unwrap();
+
+    let tools = AvailableTools::with_tools(&["claude"]);
+    let view = HomeView::new(None, tools).unwrap();
+
+    assert_eq!(view.instances.len(), 2);
+    let profiles: Vec<&str> = view
+        .instances
+        .iter()
+        .map(|i| i.source_profile.as_str())
+        .collect();
+    assert!(profiles.contains(&"alpha"));
+    assert!(profiles.contains(&"beta"));
+}
+
+#[test]
+#[serial]
+fn test_filtered_view_loads_single_profile() {
+    let temp = TempDir::new().unwrap();
+    setup_test_home(&temp);
+
+    let storage_a = Storage::new("alpha").unwrap();
+    storage_a
+        .save(&[Instance::new("Alpha Session", "/tmp/a")])
+        .unwrap();
+
+    let storage_b = Storage::new("beta").unwrap();
+    storage_b
+        .save(&[Instance::new("Beta Session", "/tmp/b")])
+        .unwrap();
+
+    let tools = AvailableTools::with_tools(&["claude"]);
+    let view = HomeView::new(Some("alpha".to_string()), tools).unwrap();
+
+    assert_eq!(view.instances.len(), 1);
+    assert_eq!(view.instances[0].title, "Alpha Session");
+    assert_eq!(view.instances[0].source_profile, "alpha");
+}
+
+#[test]
+#[serial]
+fn test_all_profiles_view_has_profile_headers() {
+    let temp = TempDir::new().unwrap();
+    setup_test_home(&temp);
+
+    let storage_a = Storage::new("alpha").unwrap();
+    storage_a.save(&[Instance::new("A1", "/tmp/a")]).unwrap();
+
+    let storage_b = Storage::new("beta").unwrap();
+    storage_b.save(&[Instance::new("B1", "/tmp/b")]).unwrap();
+
+    let tools = AvailableTools::with_tools(&["claude"]);
+    let view = HomeView::new(None, tools).unwrap();
+
+    let profile_headers: Vec<&str> = view
+        .flat_items
+        .iter()
+        .filter_map(|item| match item {
+            Item::ProfileHeader { name, .. } => Some(name.as_str()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(profile_headers.contains(&"alpha"));
+    assert!(profile_headers.contains(&"beta"));
+}
+
+#[test]
+#[serial]
+fn test_filtered_view_has_no_profile_headers() {
+    let temp = TempDir::new().unwrap();
+    setup_test_home(&temp);
+
+    let storage_a = Storage::new("alpha").unwrap();
+    storage_a.save(&[Instance::new("A1", "/tmp/a")]).unwrap();
+
+    let tools = AvailableTools::with_tools(&["claude"]);
+    let view = HomeView::new(Some("alpha".to_string()), tools).unwrap();
+
+    let has_headers = view
+        .flat_items
+        .iter()
+        .any(|item| matches!(item, Item::ProfileHeader { .. }));
+    assert!(
+        !has_headers,
+        "filtered view should not have profile headers"
+    );
+}

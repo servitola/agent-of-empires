@@ -251,6 +251,101 @@ fn min_created_at_in_group(path: &str, instances: &[Instance]) -> DateTime<Utc> 
         .unwrap_or(DateTime::<Utc>::MAX_UTC)
 }
 
+/// Flatten instances from multiple profiles into a list with ProfileHeader top-level groups.
+/// Each profile becomes a collapsible header, with its groups and sessions nested inside.
+pub fn flatten_tree_all_profiles(
+    instances: &[Instance],
+    groups: &[Group],
+    sort_order: SortOrder,
+    collapsed_profiles: &std::collections::HashSet<String>,
+) -> Vec<Item> {
+    let mut items = Vec::new();
+
+    // Collect unique profiles, sorted alphabetically
+    let mut profiles: Vec<String> = instances
+        .iter()
+        .map(|i| i.source_profile.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    profiles.sort();
+
+    for profile_name in &profiles {
+        let profile_instances: Vec<&Instance> = instances
+            .iter()
+            .filter(|i| i.source_profile == *profile_name)
+            .collect();
+
+        let count = profile_instances.len();
+        let collapsed = collapsed_profiles.contains(profile_name);
+
+        items.push(Item::ProfileHeader {
+            name: profile_name.clone(),
+            collapsed,
+            session_count: count,
+        });
+
+        if collapsed {
+            continue;
+        }
+
+        // Collect groups relevant to this profile
+        let profile_groups: Vec<Group> = groups
+            .iter()
+            .filter(|g| {
+                profile_instances.iter().any(|i| {
+                    i.group_path == g.path || i.group_path.starts_with(&format!("{}/", g.path))
+                })
+            })
+            .cloned()
+            .collect();
+
+        let owned_instances: Vec<Instance> =
+            profile_instances.iter().map(|i| (*i).clone()).collect();
+        let profile_tree = GroupTree::new_with_groups(&owned_instances, &profile_groups);
+
+        // Add ungrouped sessions at depth 1
+        let mut ungrouped: Vec<&Instance> = profile_instances
+            .iter()
+            .filter(|i| i.group_path.is_empty())
+            .copied()
+            .collect();
+
+        match sort_order {
+            SortOrder::Oldest => ungrouped.sort_by_key(|i| i.created_at),
+            SortOrder::Newest => ungrouped.sort_by_key(|i| Reverse(i.created_at)),
+            _ => sort_by_name(&mut ungrouped, sort_order, |i| &i.title),
+        }
+
+        for inst in ungrouped {
+            items.push(Item::Session {
+                id: inst.id.clone(),
+                depth: 1,
+            });
+        }
+
+        // Add groups at depth 1, sessions inside at depth 2+
+        let roots = profile_tree.get_roots();
+        let mut roots_sorted: Vec<&Group> = roots.iter().collect();
+        match sort_order {
+            SortOrder::Oldest => {
+                roots_sorted.sort_by_key(|g| min_created_at_in_group(&g.path, &owned_instances));
+            }
+            SortOrder::Newest => {
+                roots_sorted
+                    .sort_by_key(|g| Reverse(max_created_at_in_group(&g.path, &owned_instances)));
+            }
+            _ => sort_by_name(&mut roots_sorted, sort_order, |g| &g.name),
+        }
+
+        for root in roots_sorted {
+            flatten_group(root, &owned_instances, &mut items, 1, sort_order);
+        }
+    }
+
+    items
+}
+
 pub fn flatten_tree(
     group_tree: &GroupTree,
     instances: &[Instance],

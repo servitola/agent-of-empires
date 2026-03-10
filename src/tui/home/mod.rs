@@ -14,7 +14,8 @@ use tui_input::Input;
 
 use crate::session::{
     config::{load_config, save_config, SortOrder},
-    flatten_tree, resolve_config, DefaultTerminalMode, Group, GroupTree, Instance, Item, Storage,
+    flatten_tree, flatten_tree_all_profiles, resolve_config, DefaultTerminalMode, Group, GroupTree,
+    Instance, Item, Storage,
 };
 use crate::tmux::AvailableTools;
 
@@ -95,6 +96,7 @@ pub(super) const ICON_EXPANDED: &str = "▼";
 pub struct HomeView {
     pub(super) storages: HashMap<String, Storage>,
     pub(super) active_profile: Option<String>,
+    pub(super) collapsed_profiles: HashSet<String>,
     pub(super) instances: Vec<Instance>,
     pub(super) instance_map: HashMap<String, Instance>,
     pub(super) groups: Vec<Group>,
@@ -228,11 +230,17 @@ impl HomeView {
             .and_then(|c| c.app_state.sort_order)
             .unwrap_or_default();
 
-        let flat_items = flatten_tree(&group_tree, &all_instances, sort_order);
+        let collapsed_profiles = HashSet::new();
+        let flat_items = if active_profile.is_none() {
+            flatten_tree_all_profiles(&all_instances, &all_groups, sort_order, &collapsed_profiles)
+        } else {
+            flatten_tree(&group_tree, &all_instances, sort_order)
+        };
 
         let mut view = Self {
             storages,
             active_profile,
+            collapsed_profiles,
             instances: all_instances,
             instance_map,
             groups: all_groups,
@@ -326,7 +334,7 @@ impl HomeView {
             .collect();
         self.groups = all_groups;
         self.group_tree = GroupTree::new_with_groups(&self.instances, &self.groups);
-        self.flat_items = flatten_tree(&self.group_tree, &self.instances, self.sort_order);
+        self.flat_items = self.build_flat_items();
 
         if self.cursor >= self.flat_items.len() && !self.flat_items.is_empty() {
             self.cursor = self.flat_items.len() - 1;
@@ -602,6 +610,19 @@ impl HomeView {
 
     pub fn available_tools(&self) -> AvailableTools {
         self.available_tools.clone()
+    }
+
+    pub(super) fn build_flat_items(&self) -> Vec<Item> {
+        if self.active_profile.is_none() {
+            flatten_tree_all_profiles(
+                &self.instances,
+                &self.groups,
+                self.sort_order,
+                &self.collapsed_profiles,
+            )
+        } else {
+            flatten_tree(&self.group_tree, &self.instances, self.sort_order)
+        }
     }
 
     pub fn active_profile_display(&self) -> &str {

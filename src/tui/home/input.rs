@@ -6,7 +6,7 @@ use tui_input::Input;
 
 use super::{HomeView, TerminalMode, ViewMode};
 use crate::session::config::{load_config, save_config, SortOrder};
-use crate::session::{flatten_tree, list_profiles, repo_config, resolve_config, Item, Status};
+use crate::session::{list_profiles, repo_config, resolve_config, Item, Status};
 use crate::tui::app::Action;
 use crate::tui::dialogs::{
     ConfirmDialog, DeleteDialogConfig, DialogResult, GroupDeleteOptionsDialog, HookTrustAction,
@@ -766,7 +766,7 @@ impl HomeView {
 
     fn apply_sort_order(&mut self, new_order: SortOrder) {
         self.sort_order = new_order;
-        self.flat_items = flatten_tree(&self.group_tree, &self.instances, self.sort_order);
+        self.flat_items = self.build_flat_items();
         if self.search_active && !self.search_query.value().is_empty() {
             self.update_search();
         } else {
@@ -783,7 +783,7 @@ impl HomeView {
 
     fn toggle_group_collapsed(&mut self, path: &str) {
         self.group_tree.toggle_collapsed(path);
-        self.flat_items = flatten_tree(&self.group_tree, &self.instances, self.sort_order);
+        self.flat_items = self.build_flat_items();
         if let Err(e) = self.save() {
             tracing::error!("Failed to save group state: {}", e);
         }
