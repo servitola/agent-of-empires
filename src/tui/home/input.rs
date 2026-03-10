@@ -789,8 +789,13 @@ impl HomeView {
         }
     }
 
-    fn toggle_profile_collapsed(&mut self, _name: &str) {
-        // Will be implemented in Task 6 with collapsed_profiles HashSet
+    fn toggle_profile_collapsed(&mut self, name: &str) {
+        if self.collapsed_profiles.contains(name) {
+            self.collapsed_profiles.remove(name);
+        } else {
+            self.collapsed_profiles.insert(name.to_string());
+        }
+        self.flat_items = self.build_flat_items();
     }
 
     /// Re-score matches after a reload without moving the cursor.

@@ -1674,3 +1674,49 @@ fn test_filtered_view_has_no_profile_headers() {
         "filtered view should not have profile headers"
     );
 }
+
+#[test]
+#[serial]
+fn test_profile_header_collapse_hides_sessions() {
+    let temp = TempDir::new().unwrap();
+    setup_test_home(&temp);
+
+    let storage_a = Storage::new("alpha").unwrap();
+    storage_a.save(&[Instance::new("A1", "/tmp/a")]).unwrap();
+
+    let storage_b = Storage::new("beta").unwrap();
+    storage_b.save(&[Instance::new("B1", "/tmp/b")]).unwrap();
+
+    let tools = AvailableTools::with_tools(&["claude"]);
+    let mut view = HomeView::new(None, tools).unwrap();
+
+    // Initially both profiles have sessions visible
+    let session_count = view
+        .flat_items
+        .iter()
+        .filter(|i| matches!(i, Item::Session { .. }))
+        .count();
+    assert_eq!(session_count, 2);
+
+    // Collapse "alpha" profile
+    view.cursor = 0; // alpha header
+    view.update_selected();
+    view.handle_key(key(KeyCode::Enter));
+
+    // Now only beta's session should be visible
+    let session_count_after = view
+        .flat_items
+        .iter()
+        .filter(|i| matches!(i, Item::Session { .. }))
+        .count();
+    assert_eq!(session_count_after, 1);
+
+    // Alpha header should still be visible but collapsed
+    let alpha_header = view.flat_items.iter().find_map(|item| match item {
+        Item::ProfileHeader {
+            name, collapsed, ..
+        } if name == "alpha" => Some(*collapsed),
+        _ => None,
+    });
+    assert_eq!(alpha_header, Some(true));
+}
