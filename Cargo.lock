@@ -3254,6 +3254,7 @@ dependencies = [
  "agent-of-empires",
  "clap",
  "clap-markdown",
+ "regex",
 ]
 
 [[package]]
