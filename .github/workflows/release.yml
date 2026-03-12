@@ -243,3 +243,29 @@ jobs:
           git commit -m "Update aoe to ${VERSION}"
           git push
 
+  publish-clawhub:
+    name: Publish to ClawHub
+    needs: release
+    runs-on: ubuntu-latest
+    if: ${{ secrets.CLAWHUB_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: oven-sh/setup-bun@735343b667d3e6656e3338e15e2e8dae48a3b65e # v2
+
+      - name: Install clawhub CLI
+        run: bun install -g clawhub
+
+      - name: Publish skill
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          VERSION_NUM="${VERSION#v}"
+          clawhub login --token "$CLAWHUB_TOKEN" --no-browser
+          clawhub publish contrib/openclaw-skill \
+            --slug aoe \
+            --name "Agent of Empires" \
+            --version "$VERSION_NUM" \
+            --tags latest
+
