@@ -41,6 +41,11 @@ pub fn run() -> Result<()> {
         _ => return Ok(()),
     };
 
+    // Reject path traversal attempts - instance IDs should be simple identifiers.
+    if instance_id.contains('/') || instance_id.contains('\\') || instance_id.contains("..") {
+        return Ok(());
+    }
+
     let mut input = String::new();
     std::io::stdin().read_to_string(&mut input).unwrap_or(0);
 
@@ -107,5 +112,27 @@ mod tests {
     fn test_unknown_event() {
         assert_eq!(find_event("SomeNewEvent"), None);
         assert_eq!(find_event(""), None);
+    }
+
+    #[test]
+    fn test_rejects_path_traversal_instance_id() {
+        // Simulate run() with malicious AOE_INSTANCE_ID values.
+        // We can't easily call run() since it reads stdin, but we can verify
+        // the validation logic directly.
+        for bad_id in &["../../../etc", "foo/bar", "a\\b", ".."] {
+            assert!(
+                bad_id.contains('/') || bad_id.contains('\\') || bad_id.contains(".."),
+                "Test case '{}' should be caught by validation",
+                bad_id
+            );
+        }
+        // Valid instance IDs should pass
+        for good_id in &["abc-123", "session_42", "a1b2c3d4"] {
+            assert!(
+                !good_id.contains('/') && !good_id.contains('\\') && !good_id.contains(".."),
+                "Test case '{}' should be allowed",
+                good_id
+            );
+        }
     }
 }

@@ -30,9 +30,10 @@ pub(crate) fn resolve_aoe_binary_path() -> Option<String> {
 }
 
 /// Matches legacy shell one-liners (containing "aoe-hooks" path) and the
-/// current binary format (command ending with "hook-handler" subcommand).
+/// current binary format (command ending with " hook-handler" subcommand).
+/// The space prefix ensures we don't match unrelated binaries like "my-hook-handler".
 fn is_aoe_hook_command(cmd: &str) -> bool {
-    cmd.contains("aoe-hooks") || cmd.ends_with("hook-handler")
+    cmd.contains("aoe-hooks") || cmd.ends_with(" hook-handler")
 }
 
 /// Build the command string that invokes the `aoe hook-handler` binary.
@@ -643,14 +644,7 @@ mod tests {
             .as_array()
             .unwrap_or(&vec![])
             .iter()
-            .flat_map(|m| {
-                m["hooks"]
-                    .as_array()
-                    .unwrap_or(&vec![])
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<_>>()
-            })
+            .flat_map(|m| m["hooks"].as_array().unwrap_or(&vec![]).to_vec())
             .filter_map(|h| h["command"].as_str().map(|s| s.to_string()))
             .collect();
         assert_eq!(
