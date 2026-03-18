@@ -18,39 +18,32 @@ pub use status_file::{cleanup_hook_status_dir, hook_status_dir, read_hook_status
 /// Base directory for all AoE hook status files.
 pub(crate) const HOOK_STATUS_BASE: &str = "/tmp/aoe-hooks";
 
-/// Resolve the absolute canonicalized path to the running `aoe` binary.
-///
-/// Uses `std::env::current_exe()` to get the binary path and `std::fs::canonicalize()`
-/// to resolve symlinks and relative components. Returns `None` if resolution fails.
-pub(crate) fn resolve_aoe_binary_path() -> Option<String> {
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| std::fs::canonicalize(&path).ok())
-        .and_then(|path| path.to_str().map(|s| s.to_string()))
+/// Marker substring used to identify AoE-managed hooks in settings.json.
+/// Any hook command containing this string is considered ours.
+const AOE_HOOK_MARKER: &str = "aoe-hooks";
+
+/// Build the shell command for a hook that writes a status value.
+fn hook_command(status: &str) -> String {
+    format!(
+        "sh -c '[ -n \"$AOE_INSTANCE_ID\" ] || exit 0; mkdir -p /tmp/aoe-hooks/$AOE_INSTANCE_ID && printf {} > /tmp/aoe-hooks/$AOE_INSTANCE_ID/status'",
+        status
+    )
 }
 
-/// Matches legacy shell one-liners (containing "aoe-hooks" path) and the
-/// current binary format (command ending with " hook-handler" subcommand).
-/// The space prefix ensures we don't match unrelated binaries like "my-hook-handler".
 fn is_aoe_hook_command(cmd: &str) -> bool {
-    cmd.contains("aoe-hooks") || cmd.ends_with(" hook-handler")
-}
-
-/// Build the command string that invokes the `aoe hook-handler` binary.
-///
-/// Resolves the absolute path to the running binary so hooks work regardless
-/// of `$PATH`. Falls back to bare `"aoe"` if resolution fails.
-fn aoe_hook_command() -> String {
-    let binary = resolve_aoe_binary_path().unwrap_or_else(|| "aoe".to_string());
-    format!("{binary} hook-handler")
+    cmd.contains(AOE_HOOK_MARKER)
 }
 
 /// Build the AoE hooks JSON structure from agent-defined events.
+///
+/// Events with `status: None` (lifecycle-only) are skipped since shell
+/// one-liners can only write a status string.
 fn build_aoe_hooks(events: &[crate::agents::HookEvent]) -> Value {
-    let command = aoe_hook_command();
-
     let mut hooks_obj = serde_json::Map::new();
     for event in events {
+        let Some(status) = event.status else {
+            continue;
+        };
         let mut entry = serde_json::Map::new();
         if let Some(m) = event.matcher {
             entry.insert("matcher".to_string(), Value::String(m.to_string()));
@@ -59,7 +52,7 @@ fn build_aoe_hooks(events: &[crate::agents::HookEvent]) -> Value {
             "hooks".to_string(),
             Value::Array(vec![serde_json::json!({
                 "type": "command",
-                "command": command
+                "command": hook_command(status)
             })]),
         );
         hooks_obj.insert(
@@ -352,30 +345,16 @@ mod tests {
 
     #[test]
     fn test_hook_command_format() {
-        let cmd = aoe_hook_command();
-        assert!(
-            cmd.contains("hook-handler"),
-            "Command should reference hook-handler: {}",
-            cmd
-        );
-        assert!(
-            cmd.ends_with("hook-handler"),
-            "Command should end with hook-handler: {}",
-            cmd
-        );
+        let cmd = hook_command("running");
+        assert!(cmd.contains(AOE_HOOK_MARKER));
+        assert!(cmd.contains("printf running"));
     }
 
     #[test]
-    fn test_hook_command_uses_absolute_path_or_fallback() {
-        let cmd = aoe_hook_command();
-        let binary_part = cmd.strip_suffix(" hook-handler").unwrap();
-        let is_absolute = std::path::Path::new(binary_part).is_absolute();
-        let is_fallback = binary_part == "aoe";
-        assert!(
-            is_absolute || is_fallback,
-            "Binary path should be absolute or fallback 'aoe', got: {}",
-            binary_part
-        );
+    fn test_hook_command_contains_instance_id_guard() {
+        let cmd = hook_command("idle");
+        assert!(cmd.contains("AOE_INSTANCE_ID"));
+        assert!(cmd.contains("printf idle"));
     }
 
     #[test]
@@ -390,13 +369,13 @@ mod tests {
     }
 
     #[test]
-    fn test_stop_hook_uses_binary_handler() {
+    fn test_stop_hook_writes_idle() {
         let hooks = build_aoe_hooks(claude_events());
         let stop = hooks["Stop"].as_array().unwrap();
         let cmd = stop[0]["hooks"][0]["command"].as_str().unwrap();
         assert!(
-            cmd.contains("hook-handler"),
-            "Stop hook should use binary handler: {}",
+            cmd.contains("printf idle"),
+            "Stop hook should write idle status: {}",
             cmd
         );
     }
@@ -525,7 +504,7 @@ mod tests {
     }
 
     #[test]
-    fn test_install_replaces_old_format_hooks() {
+    fn test_install_replaces_existing_hooks() {
         let tmp = TempDir::new().unwrap();
         let settings_path = tmp.path().join("settings.json");
 
@@ -562,117 +541,6 @@ mod tests {
             1,
             "Expected exactly 1 hook after reinstall, got: {:?}",
             all_cmds
-        );
-    }
-
-    #[test]
-    fn test_remove_new_format_hooks() {
-        let tmp = TempDir::new().unwrap();
-        let settings_path = tmp.path().join("settings.json");
-
-        let new_hooks = serde_json::json!({
-            "hooks": {
-                "PreToolUse": [{
-                    "hooks": [{
-                        "type": "command",
-                        "command": "/usr/local/bin/aoe hook-handler"
-                    }]
-                }]
-            }
-        });
-        std::fs::write(
-            &settings_path,
-            serde_json::to_string_pretty(&new_hooks).unwrap(),
-        )
-        .unwrap();
-
-        uninstall_hooks(&settings_path).unwrap();
-
-        let content: Value =
-            serde_json::from_str(&std::fs::read_to_string(&settings_path).unwrap()).unwrap();
-        let hooks_obj = content.get("hooks").and_then(|h| h.as_object());
-        let pre_tool = hooks_obj.and_then(|o| o.get("PreToolUse"));
-        assert!(
-            pre_tool
-                .map(|v| v.as_array().map(|a| a.is_empty()).unwrap_or(true))
-                .unwrap_or(true),
-            "New-format hook was not removed by uninstall"
-        );
-    }
-
-    #[test]
-    fn test_remove_mixed_format_hooks() {
-        let tmp = TempDir::new().unwrap();
-        let settings_path = tmp.path().join("settings.json");
-
-        let mixed_hooks = serde_json::json!({
-            "hooks": {
-                "PreToolUse": [
-                    {
-                        "hooks": [{
-                            "type": "command",
-                            "command": "sh -c 'mkdir -p /tmp/aoe-hooks/$AOE_INSTANCE_ID && printf running > /tmp/aoe-hooks/$AOE_INSTANCE_ID/status'"
-                        }]
-                    },
-                    {
-                        "hooks": [{
-                            "type": "command",
-                            "command": "/usr/local/bin/aoe hook-handler"
-                        }]
-                    },
-                    {
-                        "hooks": [{
-                            "type": "command",
-                            "command": "echo user_hook"
-                        }]
-                    }
-                ]
-            }
-        });
-        std::fs::write(
-            &settings_path,
-            serde_json::to_string_pretty(&mixed_hooks).unwrap(),
-        )
-        .unwrap();
-
-        uninstall_hooks(&settings_path).unwrap();
-
-        let content: Value =
-            serde_json::from_str(&std::fs::read_to_string(&settings_path).unwrap()).unwrap();
-        let pre_tool = &content["hooks"]["PreToolUse"];
-        let cmds: Vec<String> = pre_tool
-            .as_array()
-            .unwrap_or(&vec![])
-            .iter()
-            .flat_map(|m| m["hooks"].as_array().unwrap_or(&vec![]).to_vec())
-            .filter_map(|h| h["command"].as_str().map(|s| s.to_string()))
-            .collect();
-        assert_eq!(
-            cmds,
-            vec!["echo user_hook"],
-            "Expected only user hook to remain, got: {:?}",
-            cmds
-        );
-    }
-
-    #[test]
-    fn test_resolve_aoe_binary_path() {
-        let path = resolve_aoe_binary_path();
-
-        assert!(path.is_some(), "resolve_aoe_binary_path should return Some");
-
-        let path_str = path.unwrap();
-
-        assert!(
-            std::path::Path::new(&path_str).is_absolute(),
-            "Path should be absolute: {}",
-            path_str
-        );
-
-        assert!(
-            std::path::Path::new(&path_str).exists(),
-            "Binary path should exist: {}",
-            path_str
         );
     }
 }
