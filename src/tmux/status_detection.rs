@@ -940,3 +940,113 @@ mod tests {
         assert_eq!(detect_droid_status("random output text"), Status::Idle);
     }
 }
+
+/// Qwen Code status detection via tmux pane parsing.
+/// Qwen shows spinners when working and approval prompts when waiting.
+pub fn detect_qwen_status(raw_content: &str) -> Status {
+    let content = raw_content.to_lowercase();
+    let lines: Vec<&str> = content.lines().collect();
+    let non_empty_lines: Vec<&str> = lines
+        .iter()
+        .filter(|l| !l.trim().is_empty())
+        .copied()
+        .collect();
+
+    let last_lines: String = non_empty_lines
+        .iter()
+        .rev()
+        .take(30)
+        .rev()
+        .copied()
+        .collect::<Vec<&str>>()
+        .join("\n");
+    let last_lines_lower = last_lines.to_lowercase();
+
+    // RUNNING: Spinners and activity indicators
+    for line in &lines {
+        for spinner in SPINNER_CHARS {
+            if line.contains(spinner) {
+                return Status::Running;
+            }
+        }
+    }
+
+    if last_lines_lower.contains("esc to interrupt")
+        || last_lines_lower.contains("ctrl+c to interrupt")
+        || last_lines_lower.contains("processing")
+        || last_lines_lower.contains("working")
+    {
+        return Status::Running;
+    }
+
+    // WAITING: Tool approval prompts
+    let approval_prompts = [
+        "approve",
+        "allow",
+        "(y/n)",
+        "[y/n]",
+        "continue?",
+        "run command?",
+        "allow this tool",
+        "approve for the rest",
+    ];
+    for prompt in &approval_prompts {
+        if last_lines_lower.contains(prompt) {
+            return Status::Waiting;
+        }
+    }
+
+    // WAITING: Selection menus
+    if last_lines_lower.contains("enter to select") || last_lines_lower.contains("esc to cancel") {
+        return Status::Waiting;
+    }
+
+    // WAITING: Input prompt ready
+    for line in non_empty_lines.iter().rev().take(10) {
+        let clean_line = strip_ansi(line).trim().to_string();
+        if clean_line == ">" || clean_line == "> " || clean_line == "qwen>" {
+            return Status::Waiting;
+        }
+        if clean_line.starts_with("> ")
+            && !clean_line.to_lowercase().contains("esc")
+            && clean_line.len() < 100
+        {
+            return Status::Waiting;
+        }
+    }
+
+    Status::Idle
+}
+
+#[cfg(test)]
+mod qwen_tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_qwen_status_running() {
+        assert_eq!(
+            detect_qwen_status("⠋ thinking...\n⠙ processing request"),
+            Status::Running
+        );
+        assert_eq!(
+            detect_qwen_status("working on it\nesc to interrupt"),
+            Status::Running
+        );
+    }
+
+    #[test]
+    fn test_detect_qwen_status_waiting() {
+        assert_eq!(
+            detect_qwen_status("allow this tool to run? (y/n)"),
+            Status::Waiting
+        );
+        assert_eq!(detect_qwen_status("continue? [y/n]\n>"), Status::Waiting);
+        assert_eq!(detect_qwen_status("qwen>\n> ready"), Status::Waiting);
+    }
+
+    #[test]
+    fn test_detect_qwen_status_idle() {
+        assert_eq!(detect_qwen_status("file saved"), Status::Idle);
+        assert_eq!(detect_qwen_status("random output text"), Status::Idle);
+    }
+}

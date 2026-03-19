@@ -252,6 +252,19 @@ pub const AGENTS: &[AgentDef] = &[
         container_env: &[],
         hook_config: None,
     },
+    AgentDef {
+        name: "qwen",
+        binary: "qwen",
+        aliases: &["qwen-code", "qwen_code"],
+        detection: DetectionMethod::Which("qwen"),
+        yolo: Some(YoloMode::CliFlag("--yolo")),
+        instruction_flag: None,
+        set_default_command: false,
+        supports_host_launch: true,
+        detect_status: status_detection::detect_qwen_status,
+        container_env: &[("QWEN_CONFIG_DIR", "/root/.qwen-code")],
+        hook_config: None,
+    },
 ];
 
 /// Look up an agent by canonical name.
@@ -320,6 +333,7 @@ mod tests {
         assert_eq!(get_agent("copilot").unwrap().binary, "copilot");
         assert_eq!(get_agent("pi").unwrap().binary, "pi");
         assert_eq!(get_agent("droid").unwrap().binary, "droid");
+        assert_eq!(get_agent("qwen").unwrap().binary, "qwen");
     }
 
     #[test]
@@ -333,7 +347,7 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "claude", "opencode", "vibe", "codex", "gemini", "cursor", "copilot", "pi", "droid"
+                "claude", "opencode", "vibe", "codex", "gemini", "cursor", "copilot", "pi", "droid", "qwen"
             ]
         );
     }
@@ -351,6 +365,8 @@ mod tests {
         assert_eq!(resolve_tool_name("pi"), Some("pi"));
         assert_eq!(resolve_tool_name("droid"), Some("droid"));
         assert_eq!(resolve_tool_name("factory-droid"), Some("droid"));
+        assert_eq!(resolve_tool_name("qwen"), Some("qwen"));
+        assert_eq!(resolve_tool_name("qwen-code"), Some("qwen"));
         assert_eq!(resolve_tool_name(""), Some("claude"));
         assert_eq!(resolve_tool_name("agent"), Some("cursor"));
         assert_eq!(resolve_tool_name("unknown-tool"), None);
