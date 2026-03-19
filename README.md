@@ -146,6 +146,12 @@ Inspired by [agent-deck](https://github.com/asheshgoplani/agent-deck) (Go + Bubb
 
 Created by [Nate Brake](https://x.com/natebrake) ([@natebrake](https://x.com/natebrake))
 
+## Fork
+
+This is a fork of Agent of Empires with additional support for:
+- **Qwen Code** -- AI coding agent integration
+- **Gruvbox Theme** -- retro color scheme for the TUI
+
 ## License
 
 MIT License -- see [LICENSE](LICENSE) for details.
