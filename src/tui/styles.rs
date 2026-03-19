@@ -9,6 +9,7 @@ pub const AVAILABLE_THEMES: &[&str] = &[
     "tokyo-night-storm",
     "catppuccin-latte",
     "dracula",
+    "gruvbox-dark",
 ];
 
 pub fn load_theme(name: &str) -> Theme {
@@ -18,6 +19,7 @@ pub fn load_theme(name: &str) -> Theme {
         "tokyo-night-storm" => Theme::tokyo_night_storm(),
         "catppuccin-latte" => Theme::catppuccin_latte(),
         "dracula" => Theme::dracula(),
+        "gruvbox-dark" => Theme::gruvbox_dark(),
         _ => {
             warn!("Unknown theme '{}', falling back to empire", name);
             Theme::empire()
@@ -253,6 +255,49 @@ impl Theme {
             sandbox: Color::Rgb(189, 147, 249),
         }
     }
+
+    /// Gruvbox dark theme
+    /// Official palette: https://github.com/morhetz/gruvbox
+    pub fn gruvbox_dark() -> Self {
+        Self {
+            // Background and borders
+            background: Color::Rgb(40, 40, 40),
+            border: Color::Rgb(92, 83, 58),
+            terminal_border: Color::Rgb(131, 165, 152),
+            selection: Color::Rgb(60, 56, 54),
+            session_selection: Color::Rgb(80, 73, 69),
+
+            // Text colors
+            title: Color::Rgb(235, 219, 178),
+            text: Color::Rgb(235, 219, 178),
+            dimmed: Color::Rgb(146, 131, 116),
+            hint: Color::Rgb(168, 153, 132),
+
+            // Status colors
+            running: Color::Rgb(152, 151, 26),
+            waiting: Color::Rgb(254, 128, 25),
+            idle: Color::Rgb(146, 131, 116),
+            error: Color::Rgb(251, 73, 52),
+            terminal_active: Color::Rgb(131, 165, 152),
+
+            // UI elements
+            group: Color::Rgb(131, 165, 152),
+            search: Color::Rgb(211, 134, 155),
+            accent: Color::Rgb(235, 219, 178),
+
+            // Diff colors
+            diff_add: Color::Rgb(152, 151, 26),
+            diff_delete: Color::Rgb(251, 73, 52),
+            diff_modified: Color::Rgb(254, 128, 25),
+            diff_context: Color::Rgb(146, 131, 116),
+            diff_header: Color::Rgb(131, 165, 152),
+
+            help_key: Color::Rgb(254, 128, 25),
+
+            branch: Color::Rgb(131, 165, 152),
+            sandbox: Color::Rgb(211, 134, 155),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -302,6 +347,15 @@ mod tests {
     }
 
     #[test]
+    fn test_load_gruvbox_dark() {
+        let theme = load_theme("gruvbox-dark");
+        assert_eq!(theme.title, Color::Rgb(235, 219, 178));
+        assert_eq!(theme.background, Color::Rgb(40, 40, 40));
+        assert_eq!(theme.running, Color::Rgb(152, 151, 26));
+        assert_eq!(theme.error, Color::Rgb(251, 73, 52));
+    }
+
+    #[test]
     fn test_available_themes_count() {
         assert_eq!(AVAILABLE_THEMES.len(), 5);
         assert!(AVAILABLE_THEMES.contains(&"empire"));
@@ -309,5 +363,6 @@ mod tests {
         assert!(AVAILABLE_THEMES.contains(&"tokyo-night-storm"));
         assert!(AVAILABLE_THEMES.contains(&"catppuccin-latte"));
         assert!(AVAILABLE_THEMES.contains(&"dracula"));
+        assert!(AVAILABLE_THEMES.contains(&"gruvbox-dark"));
     }
 }
