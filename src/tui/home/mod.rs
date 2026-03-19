@@ -184,6 +184,10 @@ pub struct HomeView {
 
     // Mouse support: store list area bounds for click handling
     pub(super) last_list_area: Option<Rect>,
+
+    // Double-click detection
+    pub(super) last_click_time: Option<Instant>,
+    pub(super) last_click_row: Option<u16>,
 }
 
 impl HomeView {
@@ -294,6 +298,8 @@ impl HomeView {
                 .and_then(|c| c.app_state.home_list_width)
                 .unwrap_or(35),
             last_list_area: None,
+            last_click_time: None,
+            last_click_row: None,
         };
 
         view.flat_items = view.build_flat_items();
