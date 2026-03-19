@@ -1134,6 +1134,8 @@ impl HomeView {
 
     /// Handle a mouse event
     pub fn handle_mouse(&mut self, mouse: MouseEvent) -> Option<Action> {
+        use crossterm::event::{MouseButton, MouseEventKind};
+
         // Pass mouse events to diff view if active
         if let Some(ref mut diff_view) = self.diff_view {
             match diff_view.handle_mouse(mouse) {
@@ -1148,7 +1150,44 @@ impl HomeView {
             }
         }
 
-        // No mouse handling for other views currently
+        // Handle left-click on session list
+        if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+            // Ignore clicks when dialogs are active
+            if self.has_dialog() {
+                return None;
+            }
+
+            // Ignore clicks when search is active
+            if self.search_active {
+                return None;
+            }
+
+            // Check if click is within the list area
+            if let Some(list_area) = self.last_list_area {
+                let mouse_row = mouse.row;
+                let mouse_col = mouse.column;
+
+                // Check if mouse is within list bounds (excluding search bar area)
+                let search_bar_height = if self.search_active { 1 } else { 0 };
+                let list_height = list_area.height.saturating_sub(search_bar_height);
+
+                if mouse_col >= list_area.x
+                    && mouse_col < list_area.x + list_area.width
+                    && mouse_row >= list_area.y
+                    && mouse_row < list_area.y + list_height
+                {
+                    // Calculate which row was clicked
+                    let clicked_row = (mouse_row - list_area.y) as usize;
+
+                    // Account for scroll offset by checking against flat_items length
+                    if clicked_row < self.flat_items.len() {
+                        self.cursor = clicked_row;
+                        self.update_selected();
+                    }
+                }
+            }
+        }
+
         None
     }
 
