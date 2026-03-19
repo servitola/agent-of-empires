@@ -183,6 +183,9 @@ impl HomeView {
 
         frame.render_widget(list, inner);
 
+        // Store list area bounds for mouse click handling
+        self.last_list_area = Some(inner);
+
         // Render search bar if active
         if self.search_active {
             let search_area = Rect {

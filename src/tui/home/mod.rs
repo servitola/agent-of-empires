@@ -10,6 +10,7 @@ mod tests;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
+use ratatui::prelude::Rect;
 use tui_input::Input;
 
 use crate::session::{
@@ -180,6 +181,9 @@ pub struct HomeView {
 
     // Resizable list column width (percentage-like units)
     pub(super) list_width: u16,
+
+    // Mouse support: store list area bounds for click handling
+    pub(super) last_list_area: Option<Rect>,
 }
 
 impl HomeView {
@@ -289,6 +293,7 @@ impl HomeView {
             list_width: user_config
                 .and_then(|c| c.app_state.home_list_width)
                 .unwrap_or(35),
+            last_list_area: None,
         };
 
         view.flat_items = view.build_flat_items();
