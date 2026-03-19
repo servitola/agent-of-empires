@@ -1,5 +1,7 @@
 //! Input handling for HomeView
 
+use std::time::Instant;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use tui_input::backend::crossterm::EventHandler;
 use tui_input::Input;
@@ -1135,6 +1137,7 @@ impl HomeView {
     /// Handle a mouse event
     pub fn handle_mouse(&mut self, mouse: MouseEvent) -> Option<Action> {
         use crossterm::event::{MouseButton, MouseEventKind};
+        use std::time::Duration;
 
         // Pass mouse events to diff view if active
         if let Some(ref mut diff_view) = self.diff_view {
@@ -1181,8 +1184,61 @@ impl HomeView {
 
                     // Account for scroll offset by checking against flat_items length
                     if clicked_row < self.flat_items.len() {
-                        self.cursor = clicked_row;
-                        self.update_selected();
+                        // Check for double-click (within 300ms on same row)
+                        let is_double_click = self
+                            .last_click_time
+                            .map(|t| t.elapsed() < Duration::from_millis(300))
+                            .unwrap_or(false)
+                            && self.last_click_row == Some(mouse_row);
+
+                        // Update last click info
+                        self.last_click_time = Some(Instant::now());
+                        self.last_click_row = Some(mouse_row);
+
+                        if is_double_click {
+                            // Double-click: open attach dialog for sessions
+                            #[allow(clippy::collapsible_match, clippy::single_match)]
+                            if let Some(item) = self.flat_items.get(clicked_row) {
+                                match item {
+                                    Item::Session { id, .. } => {
+                                        // Clone id early to avoid borrow conflicts
+                                        let id = id.clone();
+                                        if let Some(inst) = self.get_instance(&id) {
+                                            if inst.status != Status::Deleting {
+                                                // Cache values before resetting click tracking
+                                                let is_sandboxed = inst.is_sandboxed();
+
+                                                // Reset click tracking
+                                                self.last_click_time = None;
+                                                self.last_click_row = None;
+
+                                                return match self.view_mode {
+                                                    ViewMode::Agent => {
+                                                        Some(Action::AttachSession(id))
+                                                    }
+                                                    ViewMode::Terminal => {
+                                                        let terminal_mode = if is_sandboxed {
+                                                            self.get_terminal_mode(&id)
+                                                        } else {
+                                                            TerminalMode::Host
+                                                        };
+                                                        Some(Action::AttachTerminal(
+                                                            id,
+                                                            terminal_mode,
+                                                        ))
+                                                    }
+                                                };
+                                            }
+                                        }
+                                    }
+                                    _ => {} // Ignore double-clicks on groups
+                                }
+                            }
+                        } else {
+                            // Single click: select the item
+                            self.cursor = clicked_row;
+                            self.update_selected();
+                        }
                     }
                 }
             }
