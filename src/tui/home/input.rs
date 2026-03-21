@@ -1238,6 +1238,14 @@ impl HomeView {
                             // Single click: select the item
                             self.cursor = clicked_row;
                             self.update_selected();
+
+                            // Toggle collapse for groups
+                            if let Some(Item::Group { path, .. }) =
+                                self.flat_items.get(clicked_row)
+                            {
+                                let path = path.clone();
+                                self.toggle_group_collapsed(&path);
+                            }
                         }
                     }
                 }
