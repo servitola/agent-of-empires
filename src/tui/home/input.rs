@@ -818,17 +818,29 @@ impl HomeView {
             KeyCode::Char('L') => {
                 self.grow_list();
             }
-            KeyCode::Left | KeyCode::Char('h') => {
-                if let Some(Item::Group {
+            KeyCode::Left | KeyCode::Char('h') => match self.flat_items.get(self.cursor) {
+                Some(Item::Group {
                     path, collapsed, ..
-                }) = self.flat_items.get(self.cursor)
-                {
+                }) => {
                     if !collapsed {
                         let path = path.clone();
                         self.toggle_group_collapsed(&path);
                     }
                 }
-            }
+                Some(Item::Session { depth, .. }) if *depth > 0 => {
+                    let depth = *depth;
+                    for i in (0..self.cursor).rev() {
+                        if let Item::Group { depth: gd, .. } = &self.flat_items[i] {
+                            if *gd < depth {
+                                self.cursor = i;
+                                self.update_selected();
+                                break;
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            },
             KeyCode::Right | KeyCode::Char('l') => {
                 if let Some(Item::Group {
                     path, collapsed, ..
@@ -1181,8 +1193,7 @@ impl HomeView {
                             self.update_selected();
 
                             // Toggle collapse for groups
-                            if let Some(Item::Group { path, .. }) =
-                                self.flat_items.get(clicked_row)
+                            if let Some(Item::Group { path, .. }) = self.flat_items.get(clicked_row)
                             {
                                 let path = path.clone();
                                 self.toggle_group_collapsed(&path);
