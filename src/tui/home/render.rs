@@ -166,6 +166,9 @@ impl HomeView {
             return;
         }
 
+        let mut list_state = std::mem::take(&mut self.list_state);
+        list_state.select(Some(self.cursor));
+
         let list_items: Vec<ListItem> = self
             .flat_items
             .iter()
@@ -181,7 +184,8 @@ impl HomeView {
         let list =
             List::new(list_items).highlight_style(Style::default().bg(theme.session_selection));
 
-        frame.render_widget(list, inner);
+        frame.render_stateful_widget(list, inner, &mut list_state);
+        self.list_state = list_state;
 
         // Store list area bounds for mouse click handling
         self.last_list_area = Some(inner);
