@@ -11,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use ratatui::prelude::Rect;
+use ratatui::widgets::ListState;
 use tui_input::Input;
 
 use crate::session::{
@@ -188,6 +189,9 @@ pub struct HomeView {
     // Resizable list column width (percentage-like units)
     pub(super) list_width: u16,
 
+    // Scroll state for the session list (used by ratatui's StatefulWidget)
+    pub(super) list_state: ListState,
+
     // Mouse support: store list area bounds for click handling
     pub(super) last_list_area: Option<Rect>,
 
@@ -301,6 +305,7 @@ impl HomeView {
             settings_view: None,
             settings_close_confirm: false,
             diff_view: None,
+            list_state: ListState::default(),
             list_width: user_config
                 .and_then(|c| c.app_state.home_list_width)
                 .unwrap_or(35),
