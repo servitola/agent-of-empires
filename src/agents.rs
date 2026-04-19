@@ -254,6 +254,19 @@ pub const AGENTS: &[AgentDef] = &[
         host_only: false,
     },
     AgentDef {
+        name: "qwen",
+        binary: "qwen",
+        aliases: &["qwen-code", "qwen_code"],
+        detection: DetectionMethod::Which("qwen"),
+        yolo: Some(YoloMode::CliFlag("--yolo")),
+        instruction_flag: None,
+        set_default_command: false,
+        detect_status: status_detection::detect_qwen_status,
+        container_env: &[("QWEN_CONFIG_DIR", "/root/.qwen-code")],
+        hook_config: None,
+        host_only: false,
+    },
+    AgentDef {
         name: "settl",
         binary: "settl",
         aliases: &["settlers", "catan"],
@@ -334,6 +347,7 @@ mod tests {
         assert_eq!(get_agent("copilot").unwrap().binary, "copilot");
         assert_eq!(get_agent("pi").unwrap().binary, "pi");
         assert_eq!(get_agent("droid").unwrap().binary, "droid");
+        assert_eq!(get_agent("qwen").unwrap().binary, "qwen");
         assert_eq!(get_agent("settl").unwrap().binary, "settl");
     }
 
@@ -349,7 +363,7 @@ mod tests {
             names,
             vec![
                 "claude", "opencode", "vibe", "codex", "gemini", "cursor", "copilot", "pi",
-                "droid", "settl"
+                "droid", "qwen", "settl"
             ]
         );
     }
@@ -367,6 +381,8 @@ mod tests {
         assert_eq!(resolve_tool_name("pi"), Some("pi"));
         assert_eq!(resolve_tool_name("droid"), Some("droid"));
         assert_eq!(resolve_tool_name("factory-droid"), Some("droid"));
+        assert_eq!(resolve_tool_name("qwen"), Some("qwen"));
+        assert_eq!(resolve_tool_name("qwen-code"), Some("qwen"));
         assert_eq!(resolve_tool_name("settl"), Some("settl"));
         assert_eq!(resolve_tool_name("settlers"), Some("settl"));
         assert_eq!(resolve_tool_name("catan"), Some("settl"));
@@ -384,7 +400,8 @@ mod tests {
         assert_eq!(settings_index_from_name(Some("copilot")), 7);
         assert_eq!(settings_index_from_name(Some("pi")), 8);
         assert_eq!(settings_index_from_name(Some("droid")), 9);
-        assert_eq!(settings_index_from_name(Some("settl")), 10);
+        assert_eq!(settings_index_from_name(Some("qwen")), 10);
+        assert_eq!(settings_index_from_name(Some("settl")), 11);
 
         assert_eq!(name_from_settings_index(0), None);
         assert_eq!(name_from_settings_index(1), Some("claude"));
@@ -393,7 +410,8 @@ mod tests {
         assert_eq!(name_from_settings_index(7), Some("copilot"));
         assert_eq!(name_from_settings_index(8), Some("pi"));
         assert_eq!(name_from_settings_index(9), Some("droid"));
-        assert_eq!(name_from_settings_index(10), Some("settl"));
+        assert_eq!(name_from_settings_index(10), Some("qwen"));
+        assert_eq!(name_from_settings_index(11), Some("settl"));
         assert_eq!(name_from_settings_index(99), None);
     }
 
