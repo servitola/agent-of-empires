@@ -226,6 +226,12 @@ pub struct HomeView {
 
     // Resizable list column width (percentage-like units)
     pub(super) list_width: u16,
+
+    // Mouse support
+    pub(super) last_list_area: Option<ratatui::prelude::Rect>,
+    pub(super) last_click_time: Option<Instant>,
+    pub(super) last_click_row: Option<u16>,
+    pub(super) last_scroll_offset: usize,
 }
 
 impl HomeView {
@@ -359,6 +365,10 @@ impl HomeView {
             list_width: user_config
                 .and_then(|c| c.app_state.home_list_width)
                 .unwrap_or(35),
+            last_list_area: None,
+            last_click_time: None,
+            last_click_row: None,
+            last_scroll_offset: 0,
         };
 
         // Clean up orphaned Creating instances from a prior crash

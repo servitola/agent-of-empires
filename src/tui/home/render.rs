@@ -227,6 +227,8 @@ impl HomeView {
             visible_height,
         );
 
+        self.last_scroll_offset = scroll.scroll_offset;
+
         let mut lines: Vec<Line> = Vec::new();
 
         if scroll.has_more_above {
@@ -268,6 +270,7 @@ impl HomeView {
         }
 
         frame.render_widget(Paragraph::new(lines), inner);
+        self.last_list_area = Some(inner);
 
         // Render search bar if active
         if self.search_active {

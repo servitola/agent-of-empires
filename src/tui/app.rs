@@ -2,8 +2,8 @@
 
 use anyhow::Result;
 use crossterm::event::{
-    DisableBracketedPaste, EnableBracketedPaste, Event, EventStream, KeyCode, KeyEvent,
-    KeyModifiers,
+    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture, Event,
+    EventStream, KeyCode, KeyEvent, KeyModifiers, MouseEvent,
 };
 use futures_util::StreamExt;
 use ratatui::prelude::*;
@@ -106,6 +106,7 @@ impl App {
             terminal.backend_mut(),
             crossterm::terminal::LeaveAlternateScreen,
             DisableBracketedPaste,
+            DisableMouseCapture,
             crossterm::cursor::Show
         )?;
         std::io::Write::flush(terminal.backend_mut())?;
@@ -126,6 +127,7 @@ impl App {
             terminal.backend_mut(),
             crossterm::terminal::EnterAlternateScreen,
             EnableBracketedPaste,
+            EnableMouseCapture,
             crossterm::cursor::Hide
         )?;
         std::io::Write::flush(terminal.backend_mut())?;
@@ -225,7 +227,13 @@ impl App {
                             }
                             continue;
                         }
-                        Some(Ok(Event::Mouse(_))) => continue,
+                        Some(Ok(Event::Mouse(mouse))) => {
+                            self.handle_mouse(mouse, terminal)?;
+                            if !self.needs_redraw {
+                                terminal.draw(|f| self.render(f))?;
+                            }
+                            continue;
+                        }
                         Some(Ok(Event::Paste(text))) => {
                             self.home.handle_paste(&text);
 
@@ -424,6 +432,17 @@ impl App {
             self.execute_action(action, terminal)?;
         }
 
+        Ok(())
+    }
+
+    fn handle_mouse(
+        &mut self,
+        mouse: MouseEvent,
+        terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
+    ) -> Result<()> {
+        if let Some(action) = self.home.handle_mouse(mouse) {
+            self.execute_action(action, terminal)?;
+        }
         Ok(())
     }
 

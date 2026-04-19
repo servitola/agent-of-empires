@@ -1,6 +1,6 @@
 //! Input handling for HomeView
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use tui_input::backend::crossterm::EventHandler;
 use tui_input::Input;
 
@@ -1255,5 +1255,92 @@ impl HomeView {
                 None
             }
         }
+    }
+
+    pub fn handle_mouse(&mut self, mouse: MouseEvent) -> Option<Action> {
+        use std::time::Duration;
+
+        if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
+            return None;
+        }
+
+        if self.has_dialog() || self.search_active {
+            return None;
+        }
+
+        let list_area = self.last_list_area?;
+
+        if mouse.column < list_area.x
+            || mouse.column >= list_area.x + list_area.width
+            || mouse.row < list_area.y
+            || mouse.row >= list_area.y + list_area.height
+        {
+            return None;
+        }
+
+        let visual_row = (mouse.row - list_area.y) as usize;
+
+        // Account for the "[N more above]" indicator line
+        let has_more_above = self.last_scroll_offset > 0;
+        let data_row = if has_more_above {
+            if visual_row == 0 {
+                return None;
+            }
+            visual_row - 1
+        } else {
+            visual_row
+        };
+
+        let flat_idx = data_row + self.last_scroll_offset;
+        if flat_idx >= self.flat_items.len() {
+            return None;
+        }
+
+        // Double-click detection
+        let is_double_click = self
+            .last_click_time
+            .map(|t| t.elapsed() < Duration::from_millis(300))
+            .unwrap_or(false)
+            && self.last_click_row == Some(mouse.row);
+
+        self.last_click_time = Some(std::time::Instant::now());
+        self.last_click_row = Some(mouse.row);
+
+        if is_double_click {
+            self.last_click_time = None;
+            self.last_click_row = None;
+
+            if let Some(Item::Session { id, .. }) = self.flat_items.get(flat_idx) {
+                let id = id.clone();
+                if let Some(inst) = self.get_instance(&id) {
+                    if !matches!(inst.status, Status::Deleting | Status::Creating) {
+                        let is_sandboxed = inst.is_sandboxed();
+                        return match self.view_mode {
+                            ViewMode::Agent => Some(Action::AttachSession(id)),
+                            ViewMode::Terminal => {
+                                let terminal_mode = if is_sandboxed {
+                                    self.get_terminal_mode(&id)
+                                } else {
+                                    TerminalMode::Host
+                                };
+                                Some(Action::AttachTerminal(id, terminal_mode))
+                            }
+                        };
+                    }
+                }
+            }
+        } else {
+            // Single click: select item
+            self.cursor = flat_idx;
+            self.update_selected();
+
+            // Toggle group on click
+            if let Some(Item::Group { path, .. }) = self.flat_items.get(flat_idx) {
+                let path = path.clone();
+                self.toggle_group_collapsed(&path);
+            }
+        }
+
+        None
     }
 }
