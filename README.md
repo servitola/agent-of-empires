@@ -17,6 +17,14 @@ A session manager for AI coding agents on Linux and macOS. Use it from the termi
 
 Run multiple AI agents in parallel across different branches of your codebase, each in its own isolated session with optional Docker sandboxing. Access your agents from your laptop, phone, or tablet.
 
+## Fork
+
+This is a fork of [njbrake/agent-of-empires](https://github.com/njbrake/agent-of-empires) with:
+- Qwen Code agent support
+- Gruvbox Dark theme (custom TOML theme in `contrib/themes/`)
+- Mouse click support (single-click select, double-click attach, group toggle)
+- Left arrow navigates from session to parent group
+
 ## Why AoE?
 
 Running one AI agent is easy. Running five of them across different branches, keeping track of which is stuck, which is waiting on input, and which just made a mess of your working tree, becomes a part-time job. AoE makes it a glance: one dashboard, one status column, git worktrees and Docker sandboxes set up for you, and sessions that outlive your terminal.
